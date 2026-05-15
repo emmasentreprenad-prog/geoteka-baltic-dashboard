@@ -108,7 +108,7 @@ cloud_cover = st.sidebar.slider("Max cloud cover", 0, 100, 40)
 zoom = st.sidebar.slider("Zoom level", 5, 18, 10)
 analysis = st.sidebar.selectbox("Analysis mode", ANALYSIS_MODES)
 coastline_buffer_m = st.sidebar.slider("Coastline section buffer (m)", 50, 1000, 200, 25)
-show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show coastline raster overlay (debug)", False)
+show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show debug raster overlay", False)
 
 if compare_dates:
     st.sidebar.markdown("### Compare dates")
