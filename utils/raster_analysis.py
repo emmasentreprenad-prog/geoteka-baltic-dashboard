@@ -95,6 +95,29 @@ def align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, cr
     return aligned_b
 
 
+def _shift_mask(mask, dr, dc):
+    shifted = np.zeros_like(mask, dtype=bool)
+
+    if dr >= 0:
+        src_r0, src_r1 = 0, mask.shape[0] - dr
+        dst_r0, dst_r1 = dr, mask.shape[0]
+    else:
+        src_r0, src_r1 = -dr, mask.shape[0]
+        dst_r0, dst_r1 = 0, mask.shape[0] + dr
+
+    if dc >= 0:
+        src_c0, src_c1 = 0, mask.shape[1] - dc
+        dst_c0, dst_c1 = dc, mask.shape[1]
+    else:
+        src_c0, src_c1 = -dc, mask.shape[1]
+        dst_c0, dst_c1 = 0, mask.shape[1] + dc
+
+    if src_r1 > src_r0 and src_c1 > src_c0:
+        shifted[dst_r0:dst_r1, dst_c0:dst_c1] = mask[src_r0:src_r1, src_c0:src_c1]
+
+    return shifted
+
+
 def _pixel_size_meters(transform):
     pixel_width = abs(float(transform.a))
     pixel_height = abs(float(transform.e))
@@ -111,8 +134,8 @@ def _coastal_buffer_mask(reference_ndwi, transform, ndwi_water_threshold=0.0, bu
         for dc in (-1, 0, 1):
             if dr == 0 and dc == 0:
                 continue
-            neighbor_water = np.roll(np.roll(water, dr, axis=0), dc, axis=1)
-            neighbor_land = np.roll(np.roll(land, dr, axis=0), dc, axis=1)
+            neighbor_water = _shift_mask(water, dr, dc)
+            neighbor_land = _shift_mask(land, dr, dc)
             boundary |= (water & neighbor_land) | (land & neighbor_water)
 
     boundary[[0, -1], :] = False
@@ -129,7 +152,7 @@ def _coastal_buffer_mask(reference_ndwi, transform, ndwi_water_threshold=0.0, bu
             expanded = coastal_buffer.copy()
             for dr in (-1, 0, 1):
                 for dc in (-1, 0, 1):
-                    expanded |= np.roll(np.roll(coastal_buffer, dr, axis=0), dc, axis=1)
+                    expanded |= _shift_mask(coastal_buffer, dr, dc)
             coastal_buffer = expanded
 
     return coastal_buffer & valid
