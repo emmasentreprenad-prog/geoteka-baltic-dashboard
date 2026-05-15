@@ -144,7 +144,6 @@ s2_b_item = None
 calculated_ndvi = None
 calculated_ndwi = None
 calculated_change = None
-masked_change = None
 ndvi_stats = None
 ndwi_stats = None
 change_stats = None
@@ -231,17 +230,16 @@ try:
                 water_threshold=0.2,
                 buffer_pixels=3,
             )
-            masked_change = np.where(coastal_contact_zone_mask, calculated_change, np.nan)
-
             add_array_overlay(
                 m,
-                masked_change,
+                calculated_change,
                 bbox,
                 "REAL NDWI change Date B minus Date A",
                 cmap_name="RdBu",
                 opacity=opacity_b / 100,
                 vmin=-0.5,
                 vmax=0.5,
+                visible_mask=coastal_contact_zone_mask,
             )
 
         elif compare_dates:
