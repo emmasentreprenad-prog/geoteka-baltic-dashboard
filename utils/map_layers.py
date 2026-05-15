@@ -33,10 +33,13 @@ def add_array_overlay(
     vmax=1,
     visible_mask=None,
 ):
-    if visible_mask is not None:
-        array = np.where(visible_mask, array, np.nan)
-
-    rgba = raster_to_rgba(array, cmap_name=cmap_name, vmin=vmin, vmax=vmax)
+    rgba = raster_to_rgba(
+        array,
+        cmap_name=cmap_name,
+        vmin=vmin,
+        vmax=vmax,
+        visible_mask=visible_mask,
+    )
 
     folium.raster_layers.ImageOverlay(
         image=rgba,

@@ -153,6 +153,8 @@ else:
 scene_a_id = "Not loaded"
 scene_b_id = "Not loaded"
 sar_id = "Not loaded"
+scene_a_date = "Not loaded"
+scene_b_date = "Not loaded"
 
 s2_a_item = None
 s2_b_item = None
@@ -179,6 +181,7 @@ if compare_dates:
             s2_a_item = s2_a_items[0]
             s2_a_signed = planetary_computer.sign(s2_a_item)
             scene_a_id = s2_a_item.id
+            scene_a_date = str(s2_a_item.properties.get("datetime", "Unknown"))[:10]
 
             add_stac_true_color(
                 m,
@@ -202,6 +205,7 @@ try:
         s2_b_item = s2_b_items[0]
         s2_b_signed = planetary_computer.sign(s2_b_item)
         scene_b_id = s2_b_item.id
+        scene_b_date = str(s2_b_item.properties.get("datetime", "Unknown"))[:10]
 
         if analysis == "NDVI vegetation health":
             calculated_ndvi, _, _ = calculate_ndvi(s2_b_item, bbox)
@@ -259,7 +263,9 @@ try:
                     transform_a,
                     crs_a,
                 )
-            active_mask = section_mask if section_mask is not None else coastal_contact_zone_mask
+            active_mask = coastal_contact_zone_mask
+            if section_mask is not None:
+                active_mask = active_mask & section_mask
             masked_change = np.where(active_mask, calculated_change, np.nan)
             finite_change_mask = np.isfinite(masked_change)
             overlay_finite_pixels = int(np.count_nonzero(finite_change_mask))
@@ -416,7 +422,9 @@ elif calculated_change is not None:
     if selected_line is None:
         st.info("Draw or select a coastline section to analyse.")
 
-    active_mask = section_mask if section_mask is not None else coastal_contact_zone_mask
+    active_mask = coastal_contact_zone_mask
+    if section_mask is not None:
+        active_mask = active_mask & section_mask
     change_stats = calculate_change_stats(
         calculated_change,
         positive_threshold=positive_threshold,
@@ -442,6 +450,11 @@ elif calculated_change is not None:
         f"analysed area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
     )
     if overlay_finite_pixels is not None and overlay_nan_pixels is not None:
+        st.caption(
+            "Overlay debug — Date A selected product date: "
+            f"{scene_a_date} | Date B selected product date: {scene_b_date} | "
+            f"valid displayed pixels after mask: {overlay_finite_pixels:,}"
+        )
         st.caption(
             "Overlay debug — finite pixels in masked_change: "
             f"{overlay_finite_pixels:,} | NaN pixels in masked_change: {overlay_nan_pixels:,}"
