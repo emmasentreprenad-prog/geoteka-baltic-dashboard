@@ -11,6 +11,7 @@ from utils.raster_analysis import (
     calculate_change_stats,
     calculate_ndvi,
     calculate_ndwi,
+    build_coastal_contact_zone_mask,
 )
 from utils.map_layers import (
     add_array_overlay,
@@ -145,6 +146,7 @@ calculated_change = None
 ndvi_stats = None
 ndwi_stats = None
 change_stats = None
+coastal_contact_zone_mask = None
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -216,6 +218,16 @@ try:
                 ndwi_b,
                 transform_b,
                 crs_b,
+            )
+            coastal_contact_zone_mask = build_coastal_contact_zone_mask(
+                ndwi_a,
+                transform_a,
+                crs_a,
+                ndwi_b,
+                transform_b,
+                crs_b,
+                water_threshold=0.2,
+                buffer_pixels=3,
             )
 
             add_array_overlay(
@@ -337,6 +349,7 @@ elif calculated_change is not None:
         calculated_change,
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
+        contact_zone_mask=coastal_contact_zone_mask,
     )
 
     st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
