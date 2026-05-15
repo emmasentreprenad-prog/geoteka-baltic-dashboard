@@ -71,15 +71,32 @@ def calculate_ndwi(item, bbox):
     return np.clip(ndwi, -1, 1), transform, crs
 
 
-def align_arrays(array_a, array_b):
-    rows = min(array_a.shape[0], array_b.shape[0])
-    cols = min(array_a.shape[1], array_b.shape[1])
-    return array_a[:rows, :cols], array_b[:rows, :cols]
+def align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
+    aligned_b = np.full(array_a.shape, np.nan, dtype="float32")
+
+    reproject(
+        source=array_b.astype("float32"),
+        destination=aligned_b,
+        src_transform=transform_b,
+        src_crs=crs_b,
+        src_nodata=np.nan,
+        dst_transform=transform_a,
+        dst_crs=crs_a,
+        dst_nodata=np.nan,
+        resampling=Resampling.bilinear,
+    )
+
+    return aligned_b
 
 
-def calculate_change(array_a, array_b):
-    array_a, array_b = align_arrays(array_a, array_b)
-    return np.clip(array_b - array_a, -2, 2)
+def calculate_change(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
+    aligned_b = align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, crs_b)
+
+    valid_mask = np.isfinite(array_a) & np.isfinite(aligned_b)
+    change = np.full(array_a.shape, np.nan, dtype="float32")
+    change[valid_mask] = aligned_b[valid_mask] - array_a[valid_mask]
+
+    return np.clip(change, -2, 2)
 
 
 def calculate_area_stats(index_array, threshold, pixel_size=10):
