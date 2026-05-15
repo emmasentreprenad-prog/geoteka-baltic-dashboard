@@ -1,0 +1,11 @@
+streamlit
+leafmap
+folium
+geopandas
+pandas
+numpy
+matplotlib
+pillow
+pystac-client
+planetary-computer
+rasterio

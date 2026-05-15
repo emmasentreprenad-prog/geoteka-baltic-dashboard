@@ -1,0 +1,12 @@
+﻿__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+.streamlit/
+*.tif
+*.tiff
+*.jp2
+*.zip
+*.log
+.DS_Store
