@@ -5,7 +5,7 @@ from rasterio.features import geometry_mask
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds, reproject, transform
 from rasterio.windows import from_bounds
-from shapely.geometry import LineString, mapping
+from shapely.geometry import LineString, Polygon, mapping
 
 
 def get_asset_href(item, band_name):
@@ -206,3 +206,39 @@ def build_line_buffer_mask(line_coordinates, buffer_meters, raster_shape, transf
     )
 
     return mask
+
+
+def build_polygon_mask_and_area(polygon_coordinates, raster_shape, transform_a, crs_a):
+    if not polygon_coordinates or len(polygon_coordinates) < 3:
+        return None, 0.0
+
+    lon_lat_ring = []
+    for coord in polygon_coordinates:
+        if len(coord) < 2:
+            continue
+        lon_lat_ring.append((coord[0], coord[1]))
+
+    if len(lon_lat_ring) < 3:
+        return None, 0.0
+
+    if lon_lat_ring[0] != lon_lat_ring[-1]:
+        lon_lat_ring.append(lon_lat_ring[0])
+
+    xs, ys = zip(*lon_lat_ring)
+    tx, ty = transform("EPSG:4326", crs_a, list(xs), list(ys))
+    projected_polygon = Polygon(zip(tx, ty))
+    if not projected_polygon.is_valid:
+        projected_polygon = projected_polygon.buffer(0)
+    if projected_polygon.is_empty:
+        return None, 0.0
+
+    mask = geometry_mask(
+        [mapping(projected_polygon)],
+        transform=transform_a,
+        invert=True,
+        out_shape=raster_shape,
+        all_touched=True,
+    )
+
+    area_ha = float(projected_polygon.area) / 10_000
+    return mask, area_ha
