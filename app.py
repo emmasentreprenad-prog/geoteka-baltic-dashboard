@@ -164,8 +164,10 @@ ndwi_stats = None
 change_stats = None
 coastal_contact_zone_mask = None
 section_mask = None
-overlay_visible_pixels = None
-overlay_transparent_pixels = None
+overlay_finite_pixels = None
+overlay_nan_pixels = None
+overlay_min_finite_change = None
+overlay_max_finite_change = None
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -259,8 +261,12 @@ try:
                 )
             active_mask = section_mask if section_mask is not None else coastal_contact_zone_mask
             masked_change = np.where(active_mask, calculated_change, np.nan)
-            overlay_visible_pixels = int(np.count_nonzero(~np.isnan(masked_change)))
-            overlay_transparent_pixels = int(np.count_nonzero(np.isnan(masked_change)))
+            finite_change_mask = np.isfinite(masked_change)
+            overlay_finite_pixels = int(np.count_nonzero(finite_change_mask))
+            overlay_nan_pixels = int(masked_change.size - overlay_finite_pixels)
+            if overlay_finite_pixels > 0:
+                overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
+                overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
             add_array_overlay(
                 m,
                 masked_change,
@@ -435,11 +441,16 @@ elif calculated_change is not None:
         f"valid analysed pixels: {change_stats['valid_pixels']:,} | "
         f"analysed area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
     )
-    if overlay_visible_pixels is not None and overlay_transparent_pixels is not None:
+    if overlay_finite_pixels is not None and overlay_nan_pixels is not None:
         st.caption(
-            "Overlay debug — visible non-NaN pixels: "
-            f"{overlay_visible_pixels:,} | transparent NaN pixels: {overlay_transparent_pixels:,}"
+            "Overlay debug — finite pixels in masked_change: "
+            f"{overlay_finite_pixels:,} | NaN pixels in masked_change: {overlay_nan_pixels:,}"
         )
+        if overlay_min_finite_change is not None and overlay_max_finite_change is not None:
+            st.caption(
+                "Overlay debug — min/max finite masked_change values: "
+                f"{overlay_min_finite_change:.4f} / {overlay_max_finite_change:.4f}"
+            )
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")

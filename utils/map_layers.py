@@ -8,18 +8,18 @@ def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=Non
     if visible_mask is not None:
         array = np.where(visible_mask, array, np.nan)
 
-    normalized = (array - vmin) / (vmax - vmin)
+    finite_mask = np.isfinite(array)
+    normalized = np.zeros_like(array, dtype=np.float32)
+    normalized[finite_mask] = (array[finite_mask] - vmin) / (vmax - vmin)
     normalized = np.clip(normalized, 0, 1)
 
     base_cmap = cm.get_cmap(cmap_name)
     cmap = ListedColormap(base_cmap(np.linspace(0, 1, 256)))
-    cmap.set_bad(alpha=0)
 
     rgba = cmap(normalized)
-    nan_mask = np.isnan(array)
-    rgba[nan_mask, 3] = 0
+    rgba[~finite_mask, 3] = 0
 
-    return (rgba * 255).astype(np.uint8)
+    return np.round(rgba * 255).astype(np.uint8)
 
 
 def add_array_overlay(
