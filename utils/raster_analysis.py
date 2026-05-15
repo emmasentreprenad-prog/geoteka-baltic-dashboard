@@ -99,6 +99,47 @@ def calculate_change(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
     return np.clip(change, -2, 2)
 
 
+def _binary_dilation(mask, iterations=1):
+    dilated = mask.copy()
+    for _ in range(max(0, iterations)):
+        padded = np.pad(dilated, 1, mode="constant", constant_values=False)
+        next_mask = np.zeros_like(dilated, dtype=bool)
+        for row_offset in (-1, 0, 1):
+            for col_offset in (-1, 0, 1):
+                next_mask |= padded[
+                    1 + row_offset:1 + row_offset + dilated.shape[0],
+                    1 + col_offset:1 + col_offset + dilated.shape[1],
+                ]
+        dilated = next_mask
+    return dilated
+
+
+def build_coastal_contact_zone_mask(
+    ndwi_a,
+    transform_a,
+    crs_a,
+    ndwi_b,
+    transform_b,
+    crs_b,
+    water_threshold=0.2,
+    buffer_pixels=3,
+):
+    aligned_ndwi_b = align_date_b_to_date_a(ndwi_a, transform_a, crs_a, ndwi_b, transform_b, crs_b)
+    valid = np.isfinite(ndwi_a) & np.isfinite(aligned_ndwi_b)
+
+    water_a = (ndwi_a > water_threshold) & valid
+    water_b = (aligned_ndwi_b > water_threshold) & valid
+
+    edge_seed = (water_a != water_b) & valid
+    edge_seed |= _binary_dilation(water_a, 1) & (~water_a) & valid
+    edge_seed |= _binary_dilation(~water_a & valid, 1) & water_a & valid
+    edge_seed |= _binary_dilation(water_b, 1) & (~water_b) & valid
+    edge_seed |= _binary_dilation(~water_b & valid, 1) & water_b & valid
+
+    contact_zone = _binary_dilation(edge_seed, iterations=buffer_pixels) & valid
+    return contact_zone
+
+
 def calculate_area_stats(index_array, threshold, pixel_size=10):
     mask = index_array > threshold
     pixels = int(np.count_nonzero(mask))
@@ -107,9 +148,22 @@ def calculate_area_stats(index_array, threshold, pixel_size=10):
     return pixels, area_m2, area_ha
 
 
-def calculate_change_stats(change_array, positive_threshold=0.15, negative_threshold=-0.15, pixel_size=10):
-    positive_pixels = int(np.count_nonzero(change_array > positive_threshold))
-    negative_pixels = int(np.count_nonzero(change_array < negative_threshold))
+def calculate_change_stats(
+    change_array,
+    positive_threshold=0.15,
+    negative_threshold=-0.15,
+    pixel_size=10,
+    contact_zone_mask=None,
+):
+    positive_mask = change_array > positive_threshold
+    negative_mask = change_array < negative_threshold
+
+    if contact_zone_mask is not None:
+        positive_mask &= contact_zone_mask
+        negative_mask &= contact_zone_mask
+
+    positive_pixels = int(np.count_nonzero(positive_mask))
+    negative_pixels = int(np.count_nonzero(negative_mask))
 
     positive_area_m2 = positive_pixels * pixel_size * pixel_size
     negative_area_m2 = negative_pixels * pixel_size * pixel_size
