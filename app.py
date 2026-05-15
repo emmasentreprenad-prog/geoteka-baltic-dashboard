@@ -108,6 +108,7 @@ cloud_cover = st.sidebar.slider("Max cloud cover", 0, 100, 40)
 zoom = st.sidebar.slider("Zoom level", 5, 18, 10)
 analysis = st.sidebar.selectbox("Analysis mode", ANALYSIS_MODES)
 coastline_buffer_m = st.sidebar.slider("Coastline section buffer (m)", 50, 1000, 200, 25)
+show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show coastline raster overlay (debug)", False)
 
 if compare_dates:
     st.sidebar.markdown("### Compare dates")
@@ -288,17 +289,18 @@ try:
                 overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
 
-            overlay_rgba_debug = add_array_overlay(
-                m,
-                calculated_change,
-                bbox,
-                "REAL coastline change raster",
-                cmap_name="RdYlGn",
-                opacity=opacity_b / 100,
-                vmin=-1,
-                vmax=1,
-                visible_mask=combined_mask,
-            )
+            if show_coastline_raster_overlay_debug:
+                overlay_rgba_debug = add_array_overlay(
+                    m,
+                    calculated_change,
+                    bbox,
+                    "REAL coastline change raster",
+                    cmap_name="RdYlGn",
+                    opacity=opacity_b / 100,
+                    vmin=-1,
+                    vmax=1,
+                    visible_mask=combined_mask,
+                )
 
         elif compare_dates:
             add_stac_water_highlight(
@@ -372,16 +374,27 @@ st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled
 if calculated_change is not None:
     calculated_shape = calculated_change.shape
     finite_in_change = int(np.count_nonzero(np.isfinite(calculated_change)))
-    contact_true = int(np.count_nonzero(coastal_contact_zone_mask)) if coastal_contact_zone_mask is not None else 0
     finite_after_mask = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
-    displayed_pct = (100.0 * finite_after_mask / calculated_change.size) if calculated_change.size else 0.0
+    debug_positive_area_m2 = 0.0
+    debug_positive_area_ha = 0.0
+    debug_negative_area_m2 = 0.0
+    debug_negative_area_ha = 0.0
+
+    if masked_change is not None:
+        positive_debug_mask = np.isfinite(masked_change) & (masked_change > 0)
+        negative_debug_mask = np.isfinite(masked_change) & (masked_change < 0)
+        debug_positive_area_m2 = float(np.count_nonzero(positive_debug_mask) * 100)
+        debug_negative_area_m2 = float(np.count_nonzero(negative_debug_mask) * 100)
+        debug_positive_area_ha = debug_positive_area_m2 / 10000
+        debug_negative_area_ha = debug_negative_area_m2 / 10000
+
     st.caption(
-        "Coastline overlay debug — "
+        "Coastline debug — "
         f"calculated_change shape: {calculated_shape} | "
         f"finite pixels in calculated_change: {finite_in_change:,} | "
-        f"true pixels in coastal_contact_zone_mask: {contact_true:,} | "
-        f"finite pixels after masking: {finite_after_mask:,} | "
-        f"percentage displayed: {displayed_pct:.2f}%"
+        f"finite pixels after mask: {finite_after_mask:,} | "
+        f"positive area: {debug_positive_area_m2:,.0f} m² ({debug_positive_area_ha:,.2f} ha) | "
+        f"negative area: {debug_negative_area_m2:,.0f} m² ({debug_negative_area_ha:,.2f} ha)"
     )
 
 if map_state:
