@@ -207,9 +207,16 @@ try:
             )
 
         elif analysis == "Coastline change" and compare_dates and s2_a_item is not None:
-            ndwi_a, _, _ = calculate_ndwi(s2_a_item, bbox)
-            ndwi_b, _, _ = calculate_ndwi(s2_b_item, bbox)
-            calculated_change = calculate_change(ndwi_a, ndwi_b)
+            ndwi_a, transform_a, crs_a = calculate_ndwi(s2_a_item, bbox)
+            ndwi_b, transform_b, crs_b = calculate_ndwi(s2_b_item, bbox)
+            calculated_change = calculate_change(
+                ndwi_a,
+                transform_a,
+                crs_a,
+                ndwi_b,
+                transform_b,
+                crs_b,
+            )
 
             add_array_overlay(
                 m,
