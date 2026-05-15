@@ -1,9 +1,11 @@
 import numpy as np
 import planetary_computer
 import rasterio
+from rasterio.features import geometry_mask
 from rasterio.enums import Resampling
-from rasterio.warp import transform_bounds, reproject
+from rasterio.warp import transform_bounds, reproject, transform
 from rasterio.windows import from_bounds
+from shapely.geometry import LineString, mapping
 
 
 def get_asset_href(item, band_name):
@@ -183,3 +185,24 @@ def calculate_change_stats(
         "pixel_area_m2": pixel_area_m2,
         "analysed_mask_area_ha": analysed_mask_area_m2 / 10_000,
     }
+
+
+def build_line_buffer_mask(line_coordinates, buffer_meters, raster_shape, transform_a, crs_a):
+    if not line_coordinates or len(line_coordinates) != 2:
+        return None
+
+    lon_lat = [(coord[1], coord[0]) for coord in line_coordinates]
+    xs, ys = zip(*lon_lat)
+    tx, ty = transform("EPSG:4326", crs_a, list(xs), list(ys))
+    projected_line = LineString(zip(tx, ty))
+    buffered_geom = projected_line.buffer(buffer_meters)
+
+    mask = geometry_mask(
+        [mapping(buffered_geom)],
+        transform=transform_a,
+        invert=True,
+        out_shape=raster_shape,
+        all_touched=True,
+    )
+
+    return mask

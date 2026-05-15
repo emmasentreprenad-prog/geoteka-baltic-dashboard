@@ -2,6 +2,7 @@ import streamlit as st
 import leafmap.foliumap as leafmap
 import planetary_computer
 import numpy as np
+from folium.plugins import Draw
 
 from config import AREAS, CENTERS, ANALYSIS_MODES
 from utils.logo import create_clean_logo
@@ -13,6 +14,7 @@ from utils.raster_analysis import (
     calculate_ndvi,
     calculate_ndwi,
     build_coastal_contact_zone_mask,
+    build_line_buffer_mask,
 )
 from utils.map_layers import (
     add_array_overlay,
@@ -103,6 +105,7 @@ st.sidebar.markdown('<div class="sidebar-title">Sentinel settings</div>', unsafe
 cloud_cover = st.sidebar.slider("Max cloud cover", 0, 100, 40)
 zoom = st.sidebar.slider("Zoom level", 5, 18, 10)
 analysis = st.sidebar.selectbox("Analysis mode", ANALYSIS_MODES)
+coastline_buffer_m = st.sidebar.slider("Coastline section buffer (m)", 50, 1000, 200, 25)
 
 if compare_dates:
     st.sidebar.markdown("### Compare dates")
@@ -129,6 +132,18 @@ st.markdown(
 st.write("Satellite intelligence for land and Baltic Sea analysis.")
 
 m = leafmap.Map(center=center, zoom=zoom)
+Draw(
+    export=False,
+    draw_options={
+        "polyline": True,
+        "polygon": False,
+        "rectangle": False,
+        "circle": False,
+        "marker": True,
+        "circlemarker": False,
+    },
+    edit_options={"edit": True, "remove": True},
+).add_to(m)
 
 if show_satellite:
     m.add_basemap("HYBRID")
@@ -148,6 +163,8 @@ ndvi_stats = None
 ndwi_stats = None
 change_stats = None
 coastal_contact_zone_mask = None
+section_mask = None
+section_line_coords = st.session_state.get("coastline_section_coords")
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -230,7 +247,16 @@ try:
                 water_threshold=0.2,
                 buffer_pixels=3,
             )
-            masked_change = np.where(coastal_contact_zone_mask, calculated_change, np.nan)
+            if section_line_coords is not None:
+                section_mask = build_line_buffer_mask(
+                    section_line_coords,
+                    coastline_buffer_m,
+                    calculated_change.shape,
+                    transform_a,
+                    crs_a,
+                )
+            active_mask = section_mask if section_mask is not None else coastal_contact_zone_mask
+            masked_change = np.where(active_mask, calculated_change, np.nan)
             add_array_overlay(
                 m,
                 masked_change,
@@ -240,7 +266,7 @@ try:
                 opacity=opacity_b / 100,
                 vmin=-0.5,
                 vmax=0.5,
-                visible_mask=coastal_contact_zone_mask,
+                visible_mask=active_mask,
             )
 
         elif compare_dates:
@@ -306,7 +332,31 @@ if show_sentinel1:
     except Exception as e:
         st.error(f"SAR error: {e}")
 
-m.to_streamlit(height=560)
+map_state = m.to_streamlit(height=560, bidirectional=True)
+
+if map_state:
+    latest_line = None
+    for drawing in (map_state.get("all_drawings") or [])[::-1]:
+        geometry = drawing.get("geometry", {})
+        coords = geometry.get("coordinates", [])
+        if geometry.get("type") == "LineString" and len(coords) >= 2:
+            latest_line = [[coords[0][1], coords[0][0]], [coords[-1][1], coords[-1][0]]]
+            break
+
+    if latest_line is None:
+        marker_points = []
+        for drawing in map_state.get("all_drawings") or []:
+            geometry = drawing.get("geometry", {})
+            coords = geometry.get("coordinates", [])
+            if geometry.get("type") == "Point" and len(coords) == 2:
+                marker_points.append([coords[1], coords[0]])
+        if len(marker_points) >= 2:
+            latest_line = [marker_points[-2], marker_points[-1]]
+
+    if latest_line is not None:
+        st.session_state["coastline_section_coords"] = latest_line
+    elif (map_state.get("all_drawings") == []):
+        st.session_state["coastline_section_coords"] = None
 
 st.markdown("## 🌊 Analysis")
 
@@ -347,11 +397,16 @@ elif calculated_change is not None:
     positive_threshold = st.slider("Positive change threshold", 0.0, 1.0, 0.15, 0.05)
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
+    selected_line = st.session_state.get("coastline_section_coords")
+    if selected_line is None:
+        st.info("Draw or select a coastline section to analyse.")
+
+    active_mask = section_mask if section_mask is not None else coastal_contact_zone_mask
     change_stats = calculate_change_stats(
         calculated_change,
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
-        contact_zone_mask=coastal_contact_zone_mask,
+        contact_zone_mask=active_mask,
     )
 
     st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
@@ -364,6 +419,12 @@ elif calculated_change is not None:
         f"{change_stats['valid_pixels']:,} | "
         f"pixel area: {change_stats['pixel_area_m2']:,} m² | "
         f"total analysed mask area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
+    )
+    st.caption(
+        "Debug — selected line coordinates: "
+        f"{selected_line} | buffer distance: {coastline_buffer_m} m | "
+        f"valid analysed pixels: {change_stats['valid_pixels']:,} | "
+        f"analysed area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
     )
 
 elif analysis == "Algae bloom detection":
