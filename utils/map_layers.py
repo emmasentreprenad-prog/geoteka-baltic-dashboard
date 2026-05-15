@@ -1,6 +1,7 @@
 import folium
 import numpy as np
 from matplotlib import cm
+from matplotlib.colors import ListedColormap
 
 
 def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=None):
@@ -10,11 +11,15 @@ def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=Non
     normalized = (array - vmin) / (vmax - vmin)
     normalized = np.clip(normalized, 0, 1)
 
-    cmap = cm.get_cmap(cmap_name)
-    rgba = cmap(normalized)
-    rgba[np.isnan(array)] = [0, 0, 0, 0]
+    base_cmap = cm.get_cmap(cmap_name)
+    cmap = ListedColormap(base_cmap(np.linspace(0, 1, 256)))
+    cmap.set_bad(alpha=0)
 
-    return rgba
+    rgba = cmap(normalized)
+    nan_mask = np.isnan(array)
+    rgba[nan_mask, 3] = 0
+
+    return (rgba * 255).astype(np.uint8)
 
 
 def add_array_overlay(
