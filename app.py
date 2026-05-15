@@ -230,9 +230,10 @@ try:
                 water_threshold=0.2,
                 buffer_pixels=3,
             )
+            masked_change = np.where(coastal_contact_zone_mask, calculated_change, np.nan)
             add_array_overlay(
                 m,
-                calculated_change,
+                masked_change,
                 bbox,
                 "REAL NDWI change Date B minus Date A",
                 cmap_name="RdBu",
