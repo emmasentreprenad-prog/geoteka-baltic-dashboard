@@ -1,5 +1,11 @@
 import numpy as np
 import planetary_computer
+
+try:
+    from scipy import ndimage
+except Exception:
+    ndimage = None
+
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds, reproject
@@ -71,15 +77,73 @@ def calculate_ndwi(item, bbox):
     return np.clip(ndwi, -1, 1), transform, crs
 
 
-def align_arrays(array_a, array_b):
-    rows = min(array_a.shape[0], array_b.shape[0])
-    cols = min(array_a.shape[1], array_b.shape[1])
-    return array_a[:rows, :cols], array_b[:rows, :cols]
+def align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
+    aligned_b = np.full(array_a.shape, np.nan, dtype="float32")
+
+    reproject(
+        source=array_b.astype("float32"),
+        destination=aligned_b,
+        src_transform=transform_b,
+        src_crs=crs_b,
+        src_nodata=np.nan,
+        dst_transform=transform_a,
+        dst_crs=crs_a,
+        dst_nodata=np.nan,
+        resampling=Resampling.bilinear,
+    )
+
+    return aligned_b
 
 
-def calculate_change(array_a, array_b):
-    array_a, array_b = align_arrays(array_a, array_b)
-    return np.clip(array_b - array_a, -2, 2)
+def _pixel_size_meters(transform):
+    pixel_width = abs(float(transform.a))
+    pixel_height = abs(float(transform.e))
+    return (pixel_width + pixel_height) / 2.0
+
+
+def _coastal_buffer_mask(reference_ndwi, transform, ndwi_water_threshold=0.0, buffer_meters=300):
+    valid = np.isfinite(reference_ndwi)
+    water = (reference_ndwi >= ndwi_water_threshold) & valid
+    land = (~water) & valid
+
+    boundary = np.zeros(reference_ndwi.shape, dtype=bool)
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0:
+                continue
+            neighbor_water = np.roll(np.roll(water, dr, axis=0), dc, axis=1)
+            neighbor_land = np.roll(np.roll(land, dr, axis=0), dc, axis=1)
+            boundary |= (water & neighbor_land) | (land & neighbor_water)
+
+    boundary[[0, -1], :] = False
+    boundary[:, [0, -1]] = False
+
+    pixel_size = max(_pixel_size_meters(transform), 1e-6)
+    iterations = max(1, int(np.ceil(buffer_meters / pixel_size)))
+
+    if ndimage is not None:
+        coastal_buffer = ndimage.binary_dilation(boundary, iterations=iterations)
+    else:
+        coastal_buffer = boundary.copy()
+        for _ in range(iterations):
+            expanded = coastal_buffer.copy()
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    expanded |= np.roll(np.roll(coastal_buffer, dr, axis=0), dc, axis=1)
+            coastal_buffer = expanded
+
+    return coastal_buffer & valid
+
+
+def calculate_change(array_a, transform_a, crs_a, array_b, transform_b, crs_b, coastal_buffer_meters=300):
+    aligned_b = align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, crs_b)
+    coastal_mask = _coastal_buffer_mask(array_a, transform_a, buffer_meters=coastal_buffer_meters)
+
+    valid_mask = np.isfinite(array_a) & np.isfinite(aligned_b) & coastal_mask
+    change = np.full(array_a.shape, np.nan, dtype="float32")
+    change[valid_mask] = aligned_b[valid_mask] - array_a[valid_mask]
+
+    return np.clip(change, -2, 2)
 
 
 def calculate_area_stats(index_array, threshold, pixel_size=10):

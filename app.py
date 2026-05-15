@@ -207,9 +207,16 @@ try:
             )
 
         elif analysis == "Coastline change" and compare_dates and s2_a_item is not None:
-            ndwi_a, _, _ = calculate_ndwi(s2_a_item, bbox)
-            ndwi_b, _, _ = calculate_ndwi(s2_b_item, bbox)
-            calculated_change = calculate_change(ndwi_a, ndwi_b)
+            ndwi_a, transform_a, crs_a = calculate_ndwi(s2_a_item, bbox)
+            ndwi_b, transform_b, crs_b = calculate_ndwi(s2_b_item, bbox)
+            calculated_change = calculate_change(
+                ndwi_a,
+                transform_a,
+                crs_a,
+                ndwi_b,
+                transform_b,
+                crs_b,
+            )
 
             add_array_overlay(
                 m,
@@ -323,6 +330,7 @@ elif calculated_ndvi is not None:
 
 elif calculated_change is not None:
     st.success("Real coastline/water change detection selected 🌊")
+    st.write("Change is calculated only inside an approximate coastal buffer zone to reduce false change from inland water, open sea, clouds, and scene mismatch.")
     positive_threshold = st.slider("Positive change threshold", 0.0, 1.0, 0.15, 0.05)
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
