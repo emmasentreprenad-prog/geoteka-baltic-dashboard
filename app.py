@@ -3,6 +3,7 @@ import leafmap.foliumap as leafmap
 import planetary_computer
 import numpy as np
 from folium.plugins import Draw
+from streamlit_folium import st_folium
 
 from config import AREAS, CENTERS, ANALYSIS_MODES
 from utils.logo import create_clean_logo
@@ -161,6 +162,7 @@ s2_b_item = None
 calculated_ndvi = None
 calculated_ndwi = None
 calculated_change = None
+masked_change = None
 ndvi_stats = None
 ndwi_stats = None
 change_stats = None
@@ -263,10 +265,15 @@ try:
                     transform_a,
                     crs_a,
                 )
-            active_mask = coastal_contact_zone_mask
+            masked_change = np.where(
+                coastal_contact_zone_mask & np.isfinite(calculated_change),
+                calculated_change,
+                np.nan,
+            )
+            active_mask = np.isfinite(masked_change)
             if section_mask is not None:
-                active_mask = active_mask & section_mask
-            masked_change = np.where(active_mask, calculated_change, np.nan)
+                masked_change = np.where(section_mask & active_mask, masked_change, np.nan)
+                active_mask = np.isfinite(masked_change)
             finite_change_mask = np.isfinite(masked_change)
             overlay_finite_pixels = int(np.count_nonzero(finite_change_mask))
             overlay_nan_pixels = int(masked_change.size - overlay_finite_pixels)
@@ -348,7 +355,7 @@ if show_sentinel1:
     except Exception as e:
         st.error(f"SAR error: {e}")
 
-map_state = m.to_streamlit(height=560, bidirectional=True)
+map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings", "last_active_drawing"])
 
 if map_state:
     latest_line = None
@@ -378,6 +385,11 @@ if map_state:
         if previous_line is not None:
             st.session_state["coastline_section_coords"] = None
             st.rerun()
+
+
+if map_state:
+    st.caption(f"Drawing debug — latest map drawing payload: {map_state.get('last_active_drawing')}")
+    st.caption(f"Drawing debug — all drawings: {map_state.get('all_drawings')}")
 
 st.markdown("## 🌊 Analysis")
 
@@ -449,21 +461,15 @@ elif calculated_change is not None:
         f"valid analysed pixels: {change_stats['valid_pixels']:,} | "
         f"analysed area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
     )
-    if overlay_finite_pixels is not None and overlay_nan_pixels is not None:
-        st.caption(
-            "Overlay debug — Date A selected product date: "
-            f"{scene_a_date} | Date B selected product date: {scene_b_date} | "
-            f"valid displayed pixels after mask: {overlay_finite_pixels:,}"
-        )
-        st.caption(
-            "Overlay debug — finite pixels in masked_change: "
-            f"{overlay_finite_pixels:,} | NaN pixels in masked_change: {overlay_nan_pixels:,}"
-        )
-        if overlay_min_finite_change is not None and overlay_max_finite_change is not None:
-            st.caption(
-                "Overlay debug — min/max finite masked_change values: "
-                f"{overlay_min_finite_change:.4f} / {overlay_max_finite_change:.4f}"
-            )
+    if calculated_change is not None and coastal_contact_zone_mask is not None:
+        mask_true_count = int(np.count_nonzero(coastal_contact_zone_mask))
+        finite_displayed_count = int(np.count_nonzero(np.isfinite(masked_change))) if "masked_change" in locals() else 0
+        full_pixels = int(calculated_change.size)
+        displayed_pct = (finite_displayed_count / full_pixels * 100.0) if full_pixels else 0.0
+        st.caption(f"Overlay debug — calculated_change shape: {calculated_change.shape}")
+        st.caption(f"Overlay debug — masked_change finite pixel count: {finite_displayed_count:,}")
+        st.caption(f"Overlay debug — coastal_contact_zone_mask true pixel count: {mask_true_count:,}")
+        st.caption(f"Overlay debug — displayed pixels vs full raster: {displayed_pct:.2f}% ({finite_displayed_count:,}/{full_pixels:,})")
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")
