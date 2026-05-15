@@ -46,6 +46,11 @@ def add_array_overlay(
         opacity=opacity,
     )
 
+    if rgba.dtype != np.uint8 or rgba.ndim != 3 or rgba.shape[2] != 4:
+        raise ValueError(
+            f"Overlay image must be RGBA uint8 with shape (height, width, 4), got dtype={rgba.dtype}, shape={rgba.shape}"
+        )
+
     folium.raster_layers.ImageOverlay(
         image=rgba,
         bounds=[[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
@@ -55,6 +60,16 @@ def add_array_overlay(
         cross_origin=False,
         zindex=20,
     ).add_to(m)
+
+    alpha = rgba[..., 3]
+    return {
+        "finite_pixels": int(np.count_nonzero(np.isfinite(array))),
+        "transparent_pixels": int(np.count_nonzero(alpha == 0)),
+        "alpha_min": int(alpha.min()),
+        "alpha_max": int(alpha.max()),
+        "rgba_shape": rgba.shape,
+        "rgba_dtype": str(rgba.dtype),
+    }
 
 
 def add_stac_true_color(m, item, name, opacity):
