@@ -15,8 +15,7 @@ from utils.raster_analysis import (
     calculate_change_stats,
     calculate_ndvi,
     calculate_ndwi,
-    build_coastal_contact_zone_mask,
-    build_line_buffer_mask,
+    build_polygon_mask_and_area,
 )
 from utils.map_layers import (
     add_array_overlay,
@@ -138,10 +137,10 @@ Draw(
     export=False,
     draw_options={
         "polyline": True,
-        "polygon": False,
-        "rectangle": False,
+        "polygon": True,
+        "rectangle": True,
         "circle": False,
-        "marker": True,
+        "marker": False,
         "circlemarker": False,
     },
     edit_options={"edit": True, "remove": True},
@@ -168,7 +167,9 @@ ndvi_stats = None
 ndwi_stats = None
 change_stats = None
 coastal_contact_zone_mask = None
-section_mask = None
+polygon_mask = None
+drawn_polygon_coords = None
+analysed_polygon_area_ha = 0.0
 overlay_finite_pixels = None
 overlay_nan_pixels = None
 overlay_min_finite_change = None
@@ -250,34 +251,22 @@ try:
                 transform_b,
                 crs_b,
             )
-            coastal_contact_zone_mask = build_coastal_contact_zone_mask(
-                ndwi_a,
-                transform_a,
-                crs_a,
-                ndwi_b,
-                transform_b,
-                crs_b,
-                water_threshold=0.2,
-                buffer_pixels=3,
-            )
-            selected_line_coords = st.session_state.get("coastline_section_coords")
-            if selected_line_coords is not None:
-                section_mask = build_line_buffer_mask(
-                    selected_line_coords,
-                    coastline_buffer_m,
+            drawn_polygon_coords = st.session_state.get("analysis_polygon_coords")
+            if drawn_polygon_coords is not None:
+                polygon_mask, analysed_polygon_area_ha = build_polygon_mask_and_area(
+                    drawn_polygon_coords,
                     calculated_change.shape,
                     transform_a,
                     crs_a,
                 )
-            masked_change = np.where(
-                coastal_contact_zone_mask & np.isfinite(calculated_change),
-                calculated_change,
-                np.nan,
-            )
-            active_mask = np.isfinite(masked_change)
-            if section_mask is not None:
-                masked_change = np.where(section_mask & active_mask, masked_change, np.nan)
-                active_mask = np.isfinite(masked_change)
+            if polygon_mask is not None:
+                masked_change = np.where(
+                    polygon_mask & np.isfinite(calculated_change),
+                    calculated_change,
+                    np.nan,
+                )
+            else:
+                masked_change = np.full(calculated_change.shape, np.nan, dtype="float32")
             finite_change_mask = np.isfinite(masked_change)
             overlay_finite_pixels = int(np.count_nonzero(finite_change_mask))
             overlay_nan_pixels = int(masked_change.size - overlay_finite_pixels)
@@ -385,32 +374,22 @@ map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings
 st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
 
 if map_state:
-    latest_line = None
+    latest_polygon = None
     for drawing in (map_state.get("all_drawings") or [])[::-1]:
         geometry = drawing.get("geometry", {})
         coords = geometry.get("coordinates", [])
-        if geometry.get("type") == "LineString" and len(coords) >= 2:
-            latest_line = [[coords[0][1], coords[0][0]], [coords[-1][1], coords[-1][0]]]
+        if geometry.get("type") == "Polygon" and len(coords) > 0 and len(coords[0]) >= 3:
+            latest_polygon = coords[0]
             break
 
-    if latest_line is None:
-        marker_points = []
-        for drawing in map_state.get("all_drawings") or []:
-            geometry = drawing.get("geometry", {})
-            coords = geometry.get("coordinates", [])
-            if geometry.get("type") == "Point" and len(coords) == 2:
-                marker_points.append([coords[1], coords[0]])
-        if len(marker_points) >= 2:
-            latest_line = [marker_points[-2], marker_points[-1]]
-
-    previous_line = st.session_state.get("coastline_section_coords")
-    if latest_line is not None:
-        if previous_line != latest_line:
-            st.session_state["coastline_section_coords"] = latest_line
+    previous_polygon = st.session_state.get("analysis_polygon_coords")
+    if latest_polygon is not None:
+        if previous_polygon != latest_polygon:
+            st.session_state["analysis_polygon_coords"] = latest_polygon
             st.rerun()
     elif (map_state.get("all_drawings") == []):
-        if previous_line is not None:
-            st.session_state["coastline_section_coords"] = None
+        if previous_polygon is not None:
+            st.session_state["analysis_polygon_coords"] = None
             st.rerun()
 
 
@@ -457,46 +436,28 @@ elif calculated_change is not None:
     positive_threshold = st.slider("Positive change threshold", 0.0, 1.0, 0.15, 0.05)
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
-    selected_line = st.session_state.get("coastline_section_coords")
-    if selected_line is None:
-        st.info("Draw or select a coastline section to analyse.")
+    if polygon_mask is None:
+        st.warning("Draw an analysis area on the map first.")
+        change_stats = None
+    else:
+        change_stats = calculate_change_stats(
+            calculated_change,
+            positive_threshold=positive_threshold,
+            negative_threshold=negative_threshold,
+            contact_zone_mask=polygon_mask,
+        )
 
-    active_mask = coastal_contact_zone_mask
-    if section_mask is not None:
-        active_mask = active_mask & section_mask
-    change_stats = calculate_change_stats(
-        calculated_change,
-        positive_threshold=positive_threshold,
-        negative_threshold=negative_threshold,
-        contact_zone_mask=active_mask,
-    )
+        st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
+        st.write(f"Positive change area: {change_stats['positive_area_ha']:,.2f} ha")
+        st.write(f"Negative change area: {change_stats['negative_area_m2']:,.0f} m²")
+        st.write(f"Negative change area: {change_stats['negative_area_ha']:,.2f} ha")
 
-    st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
-    st.write(f"Positive change area: {change_stats['positive_area_ha']:,.2f} ha")
-    st.write(f"Negative change area: {change_stats['negative_area_m2']:,.0f} m²")
-    st.write(f"Negative change area: {change_stats['negative_area_ha']:,.2f} ha")
-
-    st.caption(
-        "Debug — valid pixels used: "
-        f"{change_stats['valid_pixels']:,} | "
-        f"pixel area: {change_stats['pixel_area_m2']:,} m² | "
-        f"total analysed mask area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
-    )
-    st.caption(
-        "Debug — selected line coordinates: "
-        f"{selected_line} | buffer distance: {coastline_buffer_m} m | "
-        f"valid analysed pixels: {change_stats['valid_pixels']:,} | "
-        f"analysed area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
-    )
-    if calculated_change is not None and coastal_contact_zone_mask is not None:
-        mask_true_count = int(np.count_nonzero(coastal_contact_zone_mask))
-        finite_displayed_count = int(np.count_nonzero(np.isfinite(masked_change))) if "masked_change" in locals() else 0
-        full_pixels = int(calculated_change.size)
-        displayed_pct = (finite_displayed_count / full_pixels * 100.0) if full_pixels else 0.0
-        st.caption(f"Overlay debug — calculated_change shape: {calculated_change.shape}")
-        st.caption(f"Overlay debug — masked_change finite pixel count: {finite_displayed_count:,}")
-        st.caption(f"Overlay debug — coastal_contact_zone_mask true pixel count: {mask_true_count:,}")
-        st.caption(f"Overlay debug — displayed pixels vs full raster: {displayed_pct:.2f}% ({finite_displayed_count:,}/{full_pixels:,})")
+    finite_displayed_count = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
+    st.markdown("#### Debug")
+    st.caption(f"Drawn polygon coordinates: {drawn_polygon_coords}")
+    st.caption(f"Raster shape: {calculated_change.shape}")
+    st.caption(f"Number of finite pixels inside polygon: {finite_displayed_count:,}")
+    st.caption(f"Analysed polygon area: {analysed_polygon_area_ha:,.2f} ha")
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")
