@@ -172,6 +172,7 @@ overlay_finite_pixels = None
 overlay_nan_pixels = None
 overlay_min_finite_change = None
 overlay_max_finite_change = None
+overlay_rgba_debug = None
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -280,7 +281,7 @@ try:
             if overlay_finite_pixels > 0:
                 overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
-            add_array_overlay(
+            overlay_rgba_debug = add_array_overlay(
                 m,
                 masked_change,
                 bbox,
@@ -470,6 +471,13 @@ elif calculated_change is not None:
         st.caption(f"Overlay debug — masked_change finite pixel count: {finite_displayed_count:,}")
         st.caption(f"Overlay debug — coastal_contact_zone_mask true pixel count: {mask_true_count:,}")
         st.caption(f"Overlay debug — displayed pixels vs full raster: {displayed_pct:.2f}% ({finite_displayed_count:,}/{full_pixels:,})")
+        if overlay_rgba_debug is not None:
+            st.caption(
+                "Overlay debug — final RGBA finite pixels: "
+                f"{overlay_rgba_debug['finite_pixels']:,} | "
+                f"transparent pixels (alpha==0): {overlay_rgba_debug['transparent_pixels']:,} | "
+                f"alpha min/max: {overlay_rgba_debug['alpha_min']}/{overlay_rgba_debug['alpha_max']}"
+            )
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")
