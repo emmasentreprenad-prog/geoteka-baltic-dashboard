@@ -2,6 +2,7 @@ import streamlit as st
 import leafmap.foliumap as leafmap
 import planetary_computer
 import numpy as np
+import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
 
@@ -173,6 +174,8 @@ overlay_nan_pixels = None
 overlay_min_finite_change = None
 overlay_max_finite_change = None
 overlay_rgba_debug = None
+coastline_vector_feature_count = 0
+draw_controls_enabled = True
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -281,17 +284,36 @@ try:
             if overlay_finite_pixels > 0:
                 overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
-            overlay_rgba_debug = add_array_overlay(
-                m,
-                masked_change,
-                bbox,
-                "REAL NDWI change Date B minus Date A",
-                cmap_name="RdBu",
-                opacity=opacity_b / 100,
-                vmin=-0.5,
-                vmax=0.5,
-                visible_mask=active_mask,
-            )
+            # Render coastline change as vector-only markers (no raster rectangle overlay)
+            display_mask = np.isfinite(masked_change)
+            if np.any(display_mask):
+                rows, cols = np.where(display_mask)
+                total_candidates = len(rows)
+                max_features = 2500
+                if total_candidates > max_features:
+                    step = int(np.ceil(total_candidates / max_features))
+                    rows = rows[::step]
+                    cols = cols[::step]
+                for r, c in zip(rows, cols):
+                    val = float(masked_change[r, c])
+                    if val >= 0.15:
+                        color = "#00d26a"
+                    elif val <= -0.15:
+                        color = "#ff4d4f"
+                    else:
+                        color = "#ffd166"
+                    x, y = transform_a * (int(c) + 0.5, int(r) + 0.5)
+                    folium.CircleMarker(
+                        location=[y, x],
+                        radius=2,
+                        color=color,
+                        weight=0,
+                        fill=True,
+                        fill_color=color,
+                        fill_opacity=0.75,
+                        opacity=0.75,
+                    ).add_to(m)
+                coastline_vector_feature_count = len(rows)
 
         elif compare_dates:
             add_stac_water_highlight(
@@ -356,7 +378,11 @@ if show_sentinel1:
     except Exception as e:
         st.error(f"SAR error: {e}")
 
+st.caption(f"Map debug (above) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
+
 map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings", "last_active_drawing"])
+
+st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
 
 if map_state:
     latest_line = None
@@ -471,13 +497,6 @@ elif calculated_change is not None:
         st.caption(f"Overlay debug — masked_change finite pixel count: {finite_displayed_count:,}")
         st.caption(f"Overlay debug — coastal_contact_zone_mask true pixel count: {mask_true_count:,}")
         st.caption(f"Overlay debug — displayed pixels vs full raster: {displayed_pct:.2f}% ({finite_displayed_count:,}/{full_pixels:,})")
-        if overlay_rgba_debug is not None:
-            st.caption(
-                "Overlay debug — final RGBA finite pixels: "
-                f"{overlay_rgba_debug['finite_pixels']:,} | "
-                f"transparent pixels (alpha==0): {overlay_rgba_debug['transparent_pixels']:,} | "
-                f"alpha min/max: {overlay_rgba_debug['alpha_min']}/{overlay_rgba_debug['alpha_max']}"
-            )
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")
