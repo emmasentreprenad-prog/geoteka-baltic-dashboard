@@ -349,15 +349,23 @@ elif calculated_change is not None:
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
     change_stats = calculate_change_stats(
-        masked_change,
+        calculated_change,
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
+        contact_zone_mask=coastal_contact_zone_mask,
     )
 
     st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
     st.write(f"Positive change area: {change_stats['positive_area_ha']:,.2f} ha")
     st.write(f"Negative change area: {change_stats['negative_area_m2']:,.0f} m²")
     st.write(f"Negative change area: {change_stats['negative_area_ha']:,.2f} ha")
+
+    st.caption(
+        "Debug — valid pixels used: "
+        f"{change_stats['valid_pixels']:,} | "
+        f"pixel area: {change_stats['pixel_area_m2']:,} m² | "
+        f"total analysed mask area: {change_stats['analysed_mask_area_ha']:,.2f} ha"
+    )
 
 elif analysis == "Algae bloom detection":
     st.success("Algae bloom detection selected 🟢")

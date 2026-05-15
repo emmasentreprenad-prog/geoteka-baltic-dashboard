@@ -155,18 +155,22 @@ def calculate_change_stats(
     pixel_size=10,
     contact_zone_mask=None,
 ):
-    positive_mask = change_array > positive_threshold
-    negative_mask = change_array < negative_threshold
-
+    finite_mask = np.isfinite(change_array)
     if contact_zone_mask is not None:
-        positive_mask &= contact_zone_mask
-        negative_mask &= contact_zone_mask
+        finite_mask &= contact_zone_mask
+
+    positive_mask = (change_array > positive_threshold) & finite_mask
+    negative_mask = (change_array < negative_threshold) & finite_mask
 
     positive_pixels = int(np.count_nonzero(positive_mask))
     negative_pixels = int(np.count_nonzero(negative_mask))
 
-    positive_area_m2 = positive_pixels * pixel_size * pixel_size
-    negative_area_m2 = negative_pixels * pixel_size * pixel_size
+    pixel_area_m2 = pixel_size * pixel_size
+    positive_area_m2 = positive_pixels * pixel_area_m2
+    negative_area_m2 = negative_pixels * pixel_area_m2
+
+    valid_pixels = int(np.count_nonzero(finite_mask))
+    analysed_mask_area_m2 = valid_pixels * pixel_area_m2
 
     return {
         "positive_pixels": positive_pixels,
@@ -175,4 +179,7 @@ def calculate_change_stats(
         "negative_area_m2": negative_area_m2,
         "positive_area_ha": positive_area_m2 / 10_000,
         "negative_area_ha": negative_area_m2 / 10_000,
+        "valid_pixels": valid_pixels,
+        "pixel_area_m2": pixel_area_m2,
+        "analysed_mask_area_ha": analysed_mask_area_m2 / 10_000,
     }
