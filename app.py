@@ -177,6 +177,7 @@ overlay_nan_pixels = None
 overlay_min_finite_change = None
 overlay_max_finite_change = None
 overlay_rgba_debug = None
+raster_overlay_rendered = False
 coastline_vector_feature_count = 0
 draw_controls_enabled = True
 
@@ -290,6 +291,7 @@ try:
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
 
             if show_coastline_raster_overlay_debug:
+                raster_overlay_rendered = True
                 overlay_rgba_debug = add_array_overlay(
                     m,
                     calculated_change,
@@ -370,6 +372,7 @@ st.caption(f"Map debug (above) — draw controls enabled: {draw_controls_enabled
 map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings", "last_active_drawing"])
 
 st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
+st.caption(f"Coastline raster overlay rendered: {raster_overlay_rendered}")
 
 if calculated_change is not None:
     calculated_shape = calculated_change.shape
