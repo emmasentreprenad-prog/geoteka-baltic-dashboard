@@ -108,7 +108,7 @@ cloud_cover = st.sidebar.slider("Max cloud cover", 0, 100, 40)
 zoom = st.sidebar.slider("Zoom level", 5, 18, 10)
 analysis = st.sidebar.selectbox("Analysis mode", ANALYSIS_MODES)
 coastline_buffer_m = st.sidebar.slider("Coastline section buffer (m)", 50, 1000, 200, 25)
-show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show debug raster overlay", False)
+show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show raw raster overlay (debug only)", False)
 
 if compare_dates:
     st.sidebar.markdown("### Compare dates")
@@ -178,6 +178,14 @@ overlay_min_finite_change = None
 overlay_max_finite_change = None
 overlay_rgba_debug = None
 raster_overlay_rendered = False
+positive_marker_points = []
+negative_marker_points = []
+positive_marker_count = 0
+negative_marker_count = 0
+positive_area_m2 = 0.0
+positive_area_ha = 0.0
+negative_area_m2 = 0.0
+negative_area_ha = 0.0
 coastline_vector_feature_count = 0
 draw_controls_enabled = True
 
@@ -290,6 +298,49 @@ try:
                 overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
 
+            if overlay_finite_pixels > 0:
+                marker_limit_total = 300
+                marker_limit_each = marker_limit_total // 2
+
+                positive_indices = np.argwhere(np.isfinite(masked_change) & (masked_change > 0))
+                negative_indices = np.argwhere(np.isfinite(masked_change) & (masked_change < 0))
+
+                if positive_indices.size > 0:
+                    positive_values = masked_change[positive_indices[:, 0], positive_indices[:, 1]]
+                    top_positive = np.argsort(positive_values)[-marker_limit_each:]
+                    selected_positive = positive_indices[top_positive]
+                    positive_marker_points = [
+                        (float(transform_a * (int(col), int(row)))[1], float(transform_a * (int(col), int(row)))[0])
+                        for row, col in selected_positive
+                    ]
+
+                if negative_indices.size > 0:
+                    negative_values = np.abs(masked_change[negative_indices[:, 0], negative_indices[:, 1]])
+                    top_negative = np.argsort(negative_values)[-marker_limit_each:]
+                    selected_negative = negative_indices[top_negative]
+                    negative_marker_points = [
+                        (float(transform_a * (int(col), int(row)))[1], float(transform_a * (int(col), int(row)))[0])
+                        for row, col in selected_negative
+                    ]
+
+                positive_marker_count = len(positive_marker_points)
+                negative_marker_count = len(negative_marker_points)
+
+                positive_area_m2 = float(np.count_nonzero(np.isfinite(masked_change) & (masked_change > 0)) * 100)
+                negative_area_m2 = float(np.count_nonzero(np.isfinite(masked_change) & (masked_change < 0)) * 100)
+                positive_area_ha = positive_area_m2 / 10000
+                negative_area_ha = negative_area_m2 / 10000
+
+                pos_group = folium.FeatureGroup(name="Coastline positive change markers")
+                for lat, lon in positive_marker_points:
+                    folium.CircleMarker(location=[lat, lon], radius=3, color="#2b7bff", fill=True, fill_color="#2b7bff", fill_opacity=0.85, weight=1).add_to(pos_group)
+                pos_group.add_to(m)
+
+                neg_group = folium.FeatureGroup(name="Coastline negative change markers")
+                for lat, lon in negative_marker_points:
+                    folium.CircleMarker(location=[lat, lon], radius=3, color="#ff3b30", fill=True, fill_color="#ff3b30", fill_opacity=0.85, weight=1).add_to(neg_group)
+                neg_group.add_to(m)
+
             if show_coastline_raster_overlay_debug:
                 raster_overlay_rendered = True
                 overlay_rgba_debug = add_array_overlay(
@@ -373,6 +424,15 @@ map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings
 
 st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
 st.caption(f"Coastline raster overlay rendered: {raster_overlay_rendered}")
+
+if calculated_change is not None:
+    st.markdown(
+        f"**Coastline marker summary** — "
+        f"positive marker points: {positive_marker_count:,} | "
+        f"negative marker points: {negative_marker_count:,} | "
+        f"positive area: {positive_area_m2:,.0f} m² ({positive_area_ha:,.2f} ha) | "
+        f"negative area: {negative_area_m2:,.0f} m² ({negative_area_ha:,.2f} ha)"
+    )
 
 if calculated_change is not None:
     calculated_shape = calculated_change.shape
