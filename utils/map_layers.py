@@ -1,25 +1,29 @@
 import folium
 import numpy as np
 from matplotlib import cm
-from matplotlib.colors import ListedColormap
 
 
-def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=None):
+def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=None, opacity=0.65):
     if visible_mask is not None:
         array = np.where(visible_mask, array, np.nan)
 
     finite_mask = np.isfinite(array)
     normalized = np.zeros_like(array, dtype=np.float32)
+    if vmax == vmin:
+        vmax = vmin + 1e-6
     normalized[finite_mask] = (array[finite_mask] - vmin) / (vmax - vmin)
-    normalized = np.clip(normalized, 0, 1)
+    normalized = np.clip(normalized, 0.0, 1.0)
 
-    base_cmap = cm.get_cmap(cmap_name)
-    cmap = ListedColormap(base_cmap(np.linspace(0, 1, 256)))
+    rgba = np.zeros((array.shape[0], array.shape[1], 4), dtype=np.uint8)
+    if np.any(finite_mask):
+        cmap = cm.get_cmap(cmap_name)
+        rgb = np.round(cmap(normalized)[..., :3] * 255).astype(np.uint8)
+        rgba[..., :3] = rgb
+        alpha_value = np.uint8(np.clip(opacity, 0.0, 1.0) * 255)
+        rgba[finite_mask, 3] = alpha_value
 
-    rgba = cmap(normalized)
-    rgba[~finite_mask, 3] = 0
-
-    return np.round(rgba * 255).astype(np.uint8)
+    rgba[~finite_mask] = np.array([0, 0, 0, 0], dtype=np.uint8)
+    return rgba
 
 
 def add_array_overlay(
@@ -39,6 +43,7 @@ def add_array_overlay(
         vmin=vmin,
         vmax=vmax,
         visible_mask=visible_mask,
+        opacity=opacity,
     )
 
     folium.raster_layers.ImageOverlay(
