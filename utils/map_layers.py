@@ -3,18 +3,32 @@ import numpy as np
 from matplotlib import cm
 
 
-def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1):
+def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=None):
     normalized = (array - vmin) / (vmax - vmin)
     normalized = np.clip(normalized, 0, 1)
 
     cmap = cm.get_cmap(cmap_name)
     rgba = cmap(normalized)
     rgba[np.isnan(array)] = [0, 0, 0, 0]
+
+    if visible_mask is not None:
+        rgba[~visible_mask] = [0, 0, 0, 0]
+
     return rgba
 
 
-def add_array_overlay(m, array, bbox, name, cmap_name="viridis", opacity=0.65, vmin=-1, vmax=1):
-    rgba = raster_to_rgba(array, cmap_name=cmap_name, vmin=vmin, vmax=vmax)
+def add_array_overlay(
+    m,
+    array,
+    bbox,
+    name,
+    cmap_name="viridis",
+    opacity=0.65,
+    vmin=-1,
+    vmax=1,
+    visible_mask=None,
+):
+    rgba = raster_to_rgba(array, cmap_name=cmap_name, vmin=vmin, vmax=vmax, visible_mask=visible_mask)
 
     folium.raster_layers.ImageOverlay(
         image=rgba,
