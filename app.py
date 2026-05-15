@@ -13,6 +13,7 @@ from utils.raster_analysis import (
     calculate_area_stats,
     calculate_change,
     calculate_change_stats,
+    build_coastal_contact_zone_mask,
     calculate_ndvi,
     calculate_ndwi,
     build_polygon_mask_and_area,
@@ -259,50 +260,45 @@ try:
                     transform_a,
                     crs_a,
                 )
+            coastal_contact_zone_mask = build_coastal_contact_zone_mask(
+                ndwi_a,
+                transform_a,
+                crs_a,
+                ndwi_b,
+                transform_b,
+                crs_b,
+                buffer_pixels=max(1, int(np.ceil(coastline_buffer_m / 40))),
+            )
+
             if polygon_mask is not None:
-                masked_change = np.where(
-                    polygon_mask & np.isfinite(calculated_change),
-                    calculated_change,
-                    np.nan,
-                )
+                combined_mask = coastal_contact_zone_mask & polygon_mask
             else:
-                masked_change = np.full(calculated_change.shape, np.nan, dtype="float32")
+                combined_mask = coastal_contact_zone_mask
+
+            masked_change = np.where(
+                combined_mask & np.isfinite(calculated_change),
+                calculated_change,
+                np.nan,
+            ).astype("float32")
+
             finite_change_mask = np.isfinite(masked_change)
             overlay_finite_pixels = int(np.count_nonzero(finite_change_mask))
             overlay_nan_pixels = int(masked_change.size - overlay_finite_pixels)
             if overlay_finite_pixels > 0:
                 overlay_min_finite_change = float(np.min(masked_change[finite_change_mask]))
                 overlay_max_finite_change = float(np.max(masked_change[finite_change_mask]))
-            # Render coastline change as vector-only markers (no raster rectangle overlay)
-            display_mask = np.isfinite(masked_change)
-            if np.any(display_mask):
-                rows, cols = np.where(display_mask)
-                total_candidates = len(rows)
-                max_features = 2500
-                if total_candidates > max_features:
-                    step = int(np.ceil(total_candidates / max_features))
-                    rows = rows[::step]
-                    cols = cols[::step]
-                for r, c in zip(rows, cols):
-                    val = float(masked_change[r, c])
-                    if val >= 0.15:
-                        color = "#00d26a"
-                    elif val <= -0.15:
-                        color = "#ff4d4f"
-                    else:
-                        color = "#ffd166"
-                    x, y = transform_a * (int(c) + 0.5, int(r) + 0.5)
-                    folium.CircleMarker(
-                        location=[y, x],
-                        radius=2,
-                        color=color,
-                        weight=0,
-                        fill=True,
-                        fill_color=color,
-                        fill_opacity=0.75,
-                        opacity=0.75,
-                    ).add_to(m)
-                coastline_vector_feature_count = len(rows)
+
+            overlay_rgba_debug = add_array_overlay(
+                m,
+                calculated_change,
+                bbox,
+                "REAL coastline change raster",
+                cmap_name="RdYlGn",
+                opacity=opacity_b / 100,
+                vmin=-1,
+                vmax=1,
+                visible_mask=combined_mask,
+            )
 
         elif compare_dates:
             add_stac_water_highlight(
@@ -372,6 +368,21 @@ st.caption(f"Map debug (above) — draw controls enabled: {draw_controls_enabled
 map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings", "last_active_drawing"])
 
 st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
+
+if calculated_change is not None:
+    calculated_shape = calculated_change.shape
+    finite_in_change = int(np.count_nonzero(np.isfinite(calculated_change)))
+    contact_true = int(np.count_nonzero(coastal_contact_zone_mask)) if coastal_contact_zone_mask is not None else 0
+    finite_after_mask = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
+    displayed_pct = (100.0 * finite_after_mask / calculated_change.size) if calculated_change.size else 0.0
+    st.caption(
+        "Coastline overlay debug — "
+        f"calculated_change shape: {calculated_shape} | "
+        f"finite pixels in calculated_change: {finite_in_change:,} | "
+        f"true pixels in coastal_contact_zone_mask: {contact_true:,} | "
+        f"finite pixels after masking: {finite_after_mask:,} | "
+        f"percentage displayed: {displayed_pct:.2f}%"
+    )
 
 if map_state:
     latest_polygon = None

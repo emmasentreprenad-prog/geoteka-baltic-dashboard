@@ -4,10 +4,10 @@ from matplotlib import cm
 
 
 def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=None, opacity=0.65):
-    if visible_mask is not None:
-        array = np.where(visible_mask, array, np.nan)
-
     finite_mask = np.isfinite(array)
+    if visible_mask is not None:
+        finite_mask &= visible_mask.astype(bool)
+
     normalized = np.zeros_like(array, dtype=np.float32)
     if vmax == vmin:
         vmax = vmin + 1e-6
@@ -18,7 +18,7 @@ def raster_to_rgba(array, cmap_name="viridis", vmin=-1, vmax=1, visible_mask=Non
     if np.any(finite_mask):
         cmap = cm.get_cmap(cmap_name)
         rgb = np.round(cmap(normalized)[..., :3] * 255).astype(np.uint8)
-        rgba[..., :3] = rgb
+        rgba[finite_mask, :3] = rgb[finite_mask]
         alpha_value = np.uint8(np.clip(opacity, 0.0, 1.0) * 255)
         rgba[finite_mask, 3] = alpha_value
 
