@@ -1,6 +1,7 @@
 import streamlit as st
 import leafmap.foliumap as leafmap
 import planetary_computer
+import numpy as np
 
 from config import AREAS, CENTERS, ANALYSIS_MODES
 from utils.logo import create_clean_logo
@@ -143,6 +144,7 @@ s2_b_item = None
 calculated_ndvi = None
 calculated_ndwi = None
 calculated_change = None
+masked_change = None
 ndvi_stats = None
 ndwi_stats = None
 change_stats = None
@@ -229,10 +231,11 @@ try:
                 water_threshold=0.2,
                 buffer_pixels=3,
             )
+            masked_change = np.where(coastal_contact_zone_mask, calculated_change, np.nan)
 
             add_array_overlay(
                 m,
-                calculated_change,
+                masked_change,
                 bbox,
                 "REAL NDWI change Date B minus Date A",
                 cmap_name="RdBu",
@@ -346,10 +349,9 @@ elif calculated_change is not None:
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
     change_stats = calculate_change_stats(
-        calculated_change,
+        masked_change,
         positive_threshold=positive_threshold,
         negative_threshold=negative_threshold,
-        contact_zone_mask=coastal_contact_zone_mask,
     )
 
     st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
