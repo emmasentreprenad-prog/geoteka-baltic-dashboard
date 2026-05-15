@@ -164,7 +164,6 @@ ndwi_stats = None
 change_stats = None
 coastal_contact_zone_mask = None
 section_mask = None
-section_line_coords = st.session_state.get("coastline_section_coords")
 
 # Load Date A if comparison is enabled
 if compare_dates:
@@ -247,9 +246,10 @@ try:
                 water_threshold=0.2,
                 buffer_pixels=3,
             )
-            if section_line_coords is not None:
+            selected_line_coords = st.session_state.get("coastline_section_coords")
+            if selected_line_coords is not None:
                 section_mask = build_line_buffer_mask(
-                    section_line_coords,
+                    selected_line_coords,
                     coastline_buffer_m,
                     calculated_change.shape,
                     transform_a,
@@ -353,10 +353,15 @@ if map_state:
         if len(marker_points) >= 2:
             latest_line = [marker_points[-2], marker_points[-1]]
 
+    previous_line = st.session_state.get("coastline_section_coords")
     if latest_line is not None:
-        st.session_state["coastline_section_coords"] = latest_line
+        if previous_line != latest_line:
+            st.session_state["coastline_section_coords"] = latest_line
+            st.rerun()
     elif (map_state.get("all_drawings") == []):
-        st.session_state["coastline_section_coords"] = None
+        if previous_line is not None:
+            st.session_state["coastline_section_coords"] = None
+            st.rerun()
 
 st.markdown("## 🌊 Analysis")
 
