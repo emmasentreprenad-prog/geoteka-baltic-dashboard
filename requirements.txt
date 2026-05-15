@@ -9,3 +9,4 @@ pillow
 pystac-client
 planetary-computer
 rasterio
+streamlit-folium
