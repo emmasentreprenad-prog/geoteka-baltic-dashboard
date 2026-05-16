@@ -14,7 +14,9 @@ def search_sentinel2(bbox, date_range, cloud_cover, limit=10):
         limit=limit,
     )
 
-    return list(search.items())
+    items = list(search.items())
+    items.sort(key=lambda i: i.properties.get("datetime", ""), reverse=True)
+    return items
 
 
 @st.cache_data(show_spinner=False)
@@ -28,4 +30,6 @@ def search_sentinel1(bbox, date_range, limit=10):
         limit=limit,
     )
 
-    return list(search.items())
+    items = list(search.items())
+    items.sort(key=lambda i: i.properties.get("datetime", ""), reverse=True)
+    return items

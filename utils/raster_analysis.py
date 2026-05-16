@@ -101,6 +101,32 @@ def calculate_change(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
     return np.clip(change, -2, 2)
 
 
+
+
+def get_raster_bounds(shape, transform):
+    height, width = shape
+    left, top = transform * (0, 0)
+    right, bottom = transform * (width, height)
+    return (min(left, right), min(bottom, top), max(left, right), max(bottom, top))
+
+
+def get_overlap_bounds(bounds_a, bounds_b):
+    left = max(bounds_a[0], bounds_b[0])
+    bottom = max(bounds_a[1], bounds_b[1])
+    right = min(bounds_a[2], bounds_b[2])
+    top = min(bounds_a[3], bounds_b[3])
+    if left >= right or bottom >= top:
+        return None
+    return (left, bottom, right, top)
+
+
+def array_stats(array):
+    finite = np.isfinite(array)
+    count = int(np.count_nonzero(finite))
+    if count == 0:
+        return {"min": None, "max": None, "finite": 0}
+    return {"min": float(np.nanmin(array)), "max": float(np.nanmax(array)), "finite": count}
+
 def _binary_dilation(mask, iterations=1):
     dilated = mask.copy()
     for _ in range(max(0, iterations)):
