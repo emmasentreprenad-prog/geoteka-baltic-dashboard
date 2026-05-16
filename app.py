@@ -426,7 +426,8 @@ st.caption(f"Map debug (above) — draw controls enabled: {draw_controls_enabled
 map_state = st_folium(m, height=560, width=None, returned_objects=["all_drawings", "last_active_drawing"])
 
 st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled} | displayed coastline vector features: {coastline_vector_feature_count}")
-st.caption(f"Coastline raster overlay rendered: {raster_overlay_rendered}")
+if analysis == "Coastline change":
+    st.caption(f"Coastline raster overlay rendered: {raster_overlay_rendered}")
 
 if calculated_change is not None:
     calculated_shape = calculated_change.shape
@@ -575,6 +576,19 @@ elif analysis == "Algae bloom detection":
 elif analysis == "Ålgräs / shallow water":
     st.success("Ålgräs / shallow water selected 🌱")
     st.write("Inspect shallow coastal vegetation patterns in clear, shallow bays. GNSS or field checks are recommended.")
+    st.info("Shallow water mode is currently visual/demo only — no raster analysis has been calculated yet.")
+
+    shallow_polygon_drawn = drawn_polygon_coords is not None and len(drawn_polygon_coords) >= 3
+    shallow_polygon_coord_count = len(drawn_polygon_coords) if drawn_polygon_coords is not None else 0
+    shallow_analysis_ran = False
+    shallow_polygon_area_display = f"{analysed_polygon_area_ha:,.2f} ha" if analysed_polygon_area_ha > 0 else "N/A"
+
+    st.markdown("#### Shallow water debug")
+    st.caption(f"Selected analysis mode: {analysis}")
+    st.caption(f"Polygon drawn: {'YES' if shallow_polygon_drawn else 'NO'}")
+    st.caption(f"Polygon coordinate count: {shallow_polygon_coord_count}")
+    st.caption(f"Shallow water analysis ran: {'YES' if shallow_analysis_ran else 'NO'}")
+    st.caption(f"Calculated area inside polygon: {shallow_polygon_area_display}")
 
 elif analysis == "Flood risk":
     st.success("Flood risk selected 🌊")
