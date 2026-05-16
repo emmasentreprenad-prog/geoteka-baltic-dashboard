@@ -4,7 +4,7 @@ import rasterio
 from rasterio.features import geometry_mask
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds, reproject, transform
-from rasterio.windows import from_bounds
+from rasterio.windows import from_bounds, transform as window_transform
 from shapely.geometry import LineString, Polygon, mapping
 
 
@@ -48,7 +48,10 @@ def read_band_from_item(item, band_name, bbox, max_size=900):
             data[data == nodata] = np.nan
 
         data[data <= 0] = np.nan
-        transform = src.window_transform(window)
+        base_transform = window_transform(window, src.transform)
+        scale_x = width / out_width
+        scale_y = height / out_height
+        transform = base_transform * rasterio.Affine.scale(scale_x, scale_y)
 
         return data, transform, src.crs
 

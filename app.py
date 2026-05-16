@@ -116,7 +116,7 @@ show_coastline_raster_overlay_debug = st.sidebar.checkbox("Show raw raster overl
 
 if compare_dates:
     st.sidebar.markdown("### Compare dates")
-    date_range_a = st.sidebar.text_input("Date A / older date", "2017-08-01/2017-08-14")
+    date_range_a = st.sidebar.text_input("Date A / older date", "2024-08-01/2024-08-14")
     date_range_b = st.sidebar.text_input("Date B / newer date", "2025-08-01/2025-08-14")
     opacity_a = st.sidebar.slider("Opacity Date A", 0, 100, 55)
     opacity_b = st.sidebar.slider("Opacity Date B", 0, 100, 85)
@@ -288,6 +288,12 @@ try:
                 "change_stats": array_stats(calculated_change),
                 "shape_a": ndwi_a.shape,
                 "shape_b": aligned_ndwi_b.shape,
+                "selected_date_range_a": date_range_a,
+                "selected_date_range_b": date_range_b,
+                "search_bbox": bbox,
+                "transform_a": str(transform_a),
+                "transform_b": str(transform_b),
+                "calculated_change_bounds": get_raster_bounds(calculated_change.shape, transform_a),
             }
             drawn_polygon_coords = st.session_state.get("analysis_polygon_coords")
             analysis_area_received = drawn_polygon_coords is not None
@@ -298,6 +304,20 @@ try:
                     transform_a,
                     crs_a,
                 )
+
+                if drawn_polygon_coords:
+                    lons = [pt[0] for pt in drawn_polygon_coords if len(pt) >= 2]
+                    lats = [pt[1] for pt in drawn_polygon_coords if len(pt) >= 2]
+                    if lons and lats:
+                        polygon_bounds = (min(lons), min(lats), max(lons), max(lats))
+                        coastline_debug["polygon_bounds"] = polygon_bounds
+                        raster_bounds = coastline_debug.get("calculated_change_bounds")
+                        coastline_debug["polygon_overlaps_raster_bounds"] = not (
+                            polygon_bounds[2] < raster_bounds[0] or
+                            polygon_bounds[0] > raster_bounds[2] or
+                            polygon_bounds[3] < raster_bounds[1] or
+                            polygon_bounds[1] > raster_bounds[3]
+                        )
             coastal_contact_zone_mask = build_coastal_contact_zone_mask(
                 ndwi_a,
                 transform_a,
@@ -481,10 +501,15 @@ if calculated_change is not None:
     )
 
     if coastline_debug:
+        st.caption(f"Selected date_range_a: {coastline_debug.get('selected_date_range_a')}")
+        st.caption(f"Selected date_range_b: {coastline_debug.get('selected_date_range_b')}")
+        st.caption(f"Sentinel search bbox: {coastline_debug.get('search_bbox')}")
         st.caption(f"Date A product datetime: {coastline_debug.get('date_a_product_datetime')}")
         st.caption(f"Date B product datetime: {coastline_debug.get('date_b_product_datetime')}")
         st.caption(f"Date A CRS: {coastline_debug.get('date_a_crs')}")
         st.caption(f"Date B CRS: {coastline_debug.get('date_b_crs')}")
+        st.caption(f"transform_a: {coastline_debug.get('transform_a')}")
+        st.caption(f"transform_b: {coastline_debug.get('transform_b')}")
         st.caption(f"calculated_change CRS: {coastline_debug.get('calculated_change_crs')}")
         st.caption(f"Date A bounds: {coastline_debug.get('date_a_bounds')}")
         st.caption(f"Date B bounds (aligned to A grid): {coastline_debug.get('date_b_bounds')}")
@@ -492,6 +517,9 @@ if calculated_change is not None:
         st.caption(f"ndwi_a min/max/finite: {coastline_debug['ndwi_a_stats']['min']} / {coastline_debug['ndwi_a_stats']['max']} / {coastline_debug['ndwi_a_stats']['finite']}")
         st.caption(f"ndwi_b min/max/finite: {coastline_debug['ndwi_b_stats']['min']} / {coastline_debug['ndwi_b_stats']['max']} / {coastline_debug['ndwi_b_stats']['finite']}")
         st.caption(f"calculated_change min/max/finite before polygon mask: {coastline_debug['change_stats']['min']} / {coastline_debug['change_stats']['max']} / {coastline_debug['change_stats']['finite']}")
+        st.caption(f"calculated_change bounds: {coastline_debug.get('calculated_change_bounds')}")
+        st.caption(f"Polygon bounds: {coastline_debug.get('polygon_bounds')}")
+        st.caption(f"Polygon overlaps raster bounds: {coastline_debug.get('polygon_overlaps_raster_bounds')}")
 
 if map_state:
     latest_polygon = None
