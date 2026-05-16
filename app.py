@@ -17,6 +17,10 @@ from utils.raster_analysis import (
     calculate_ndvi,
     calculate_ndwi,
     build_polygon_mask_and_area,
+    align_date_b_to_date_a,
+    get_raster_bounds,
+    get_overlap_bounds,
+    array_stats,
 )
 from utils.map_layers import (
     add_array_overlay,
@@ -177,6 +181,7 @@ overlay_nan_pixels = None
 overlay_min_finite_change = None
 overlay_max_finite_change = None
 overlay_rgba_debug = None
+coastline_debug = {}
 raster_overlay_rendered = False
 positive_marker_points = []
 negative_marker_points = []
@@ -256,6 +261,7 @@ try:
         elif analysis == "Coastline change" and compare_dates and s2_a_item is not None:
             ndwi_a, transform_a, crs_a = calculate_ndwi(s2_a_item, bbox)
             ndwi_b, transform_b, crs_b = calculate_ndwi(s2_b_item, bbox)
+            aligned_ndwi_b = align_date_b_to_date_a(ndwi_a, transform_a, crs_a, ndwi_b, transform_b, crs_b)
             calculated_change = calculate_change(
                 ndwi_a,
                 transform_a,
@@ -264,6 +270,25 @@ try:
                 transform_b,
                 crs_b,
             )
+
+            bounds_a = get_raster_bounds(ndwi_a.shape, transform_a)
+            bounds_b_in_a = get_raster_bounds(aligned_ndwi_b.shape, transform_a)
+            overlap_bounds = get_overlap_bounds(bounds_a, bounds_b_in_a)
+            coastline_debug = {
+                "date_a_product_datetime": str(s2_a_item.properties.get("datetime", "Unknown")),
+                "date_b_product_datetime": str(s2_b_item.properties.get("datetime", "Unknown")),
+                "date_a_crs": str(crs_a),
+                "date_b_crs": str(crs_b),
+                "calculated_change_crs": str(crs_a),
+                "date_a_bounds": bounds_a,
+                "date_b_bounds": bounds_b_in_a,
+                "overlap_bounds": overlap_bounds,
+                "ndwi_a_stats": array_stats(ndwi_a),
+                "ndwi_b_stats": array_stats(aligned_ndwi_b),
+                "change_stats": array_stats(calculated_change),
+                "shape_a": ndwi_a.shape,
+                "shape_b": aligned_ndwi_b.shape,
+            }
             drawn_polygon_coords = st.session_state.get("analysis_polygon_coords")
             analysis_area_received = drawn_polygon_coords is not None
             if drawn_polygon_coords is not None:
@@ -277,9 +302,9 @@ try:
                 ndwi_a,
                 transform_a,
                 crs_a,
-                ndwi_b,
-                transform_b,
-                crs_b,
+                aligned_ndwi_b,
+                transform_a,
+                crs_a,
                 buffer_pixels=max(1, int(np.ceil(coastline_buffer_m / 40))),
             )
 
@@ -454,6 +479,19 @@ if calculated_change is not None:
         f"positive area: {debug_positive_area_m2:,.0f} m² ({debug_positive_area_ha:,.2f} ha) | "
         f"negative area: {debug_negative_area_m2:,.0f} m² ({debug_negative_area_ha:,.2f} ha)"
     )
+
+    if coastline_debug:
+        st.caption(f"Date A product datetime: {coastline_debug.get('date_a_product_datetime')}")
+        st.caption(f"Date B product datetime: {coastline_debug.get('date_b_product_datetime')}")
+        st.caption(f"Date A CRS: {coastline_debug.get('date_a_crs')}")
+        st.caption(f"Date B CRS: {coastline_debug.get('date_b_crs')}")
+        st.caption(f"calculated_change CRS: {coastline_debug.get('calculated_change_crs')}")
+        st.caption(f"Date A bounds: {coastline_debug.get('date_a_bounds')}")
+        st.caption(f"Date B bounds (aligned to A grid): {coastline_debug.get('date_b_bounds')}")
+        st.caption(f"Overlap bounds after reprojection: {coastline_debug.get('overlap_bounds')}")
+        st.caption(f"ndwi_a min/max/finite: {coastline_debug['ndwi_a_stats']['min']} / {coastline_debug['ndwi_a_stats']['max']} / {coastline_debug['ndwi_a_stats']['finite']}")
+        st.caption(f"ndwi_b min/max/finite: {coastline_debug['ndwi_b_stats']['min']} / {coastline_debug['ndwi_b_stats']['max']} / {coastline_debug['ndwi_b_stats']['finite']}")
+        st.caption(f"calculated_change min/max/finite before polygon mask: {coastline_debug['change_stats']['min']} / {coastline_debug['change_stats']['max']} / {coastline_debug['change_stats']['finite']}")
 
 if map_state:
     latest_polygon = None
