@@ -1,6 +1,7 @@
 import numpy as np
 import planetary_computer
 import rasterio
+from affine import Affine
 from rasterio.features import geometry_mask
 from rasterio.enums import Resampling
 from rasterio.warp import transform_bounds, reproject, transform
@@ -48,7 +49,10 @@ def read_band_from_item(item, band_name, bbox, max_size=900):
             data[data == nodata] = np.nan
 
         data[data <= 0] = np.nan
-        transform = src.window_transform(window)
+        base_transform = src.window_transform(window)
+        scale_x = width / out_width if out_width > 0 else 1.0
+        scale_y = height / out_height if out_height > 0 else 1.0
+        transform = base_transform * Affine.scale(scale_x, scale_y)
 
         return data, transform, src.crs
 
@@ -70,7 +74,13 @@ def calculate_ndwi(item, bbox):
     with np.errstate(divide="ignore", invalid="ignore"):
         ndwi = (green - nir) / (green + nir)
 
-    return np.clip(ndwi, -1, 1), transform, crs
+    ndwi = np.clip(ndwi, -1, 1)
+    finite_ndwi = int(np.count_nonzero(np.isfinite(ndwi)))
+    if finite_ndwi == 0:
+        item_id = getattr(item, "id", "Unknown")
+        print(f"[DEBUG] NDWI has 0 finite pixels for item {item_id}")
+
+    return ndwi, transform, crs
 
 
 def align_date_b_to_date_a(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
@@ -97,7 +107,9 @@ def calculate_change(array_a, transform_a, crs_a, array_b, transform_b, crs_b):
     valid_mask = np.isfinite(array_a) & np.isfinite(aligned_b)
     change = np.full(array_a.shape, np.nan, dtype="float32")
     change[valid_mask] = aligned_b[valid_mask] - array_a[valid_mask]
-
+    finite_valid = int(np.count_nonzero(valid_mask))
+    if finite_valid == 0:
+        print("[DEBUG] calculate_change produced 0 valid overlap pixels (all NaN change).")
     return np.clip(change, -2, 2)
 
 

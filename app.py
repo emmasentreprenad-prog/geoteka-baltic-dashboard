@@ -261,7 +261,14 @@ try:
         elif analysis == "Coastline change" and compare_dates and s2_a_item is not None:
             ndwi_a, transform_a, crs_a = calculate_ndwi(s2_a_item, bbox)
             ndwi_b, transform_b, crs_b = calculate_ndwi(s2_b_item, bbox)
+            finite_ndwi_a = int(np.count_nonzero(np.isfinite(ndwi_a)))
+            finite_ndwi_b_before = int(np.count_nonzero(np.isfinite(ndwi_b)))
+            if finite_ndwi_a == 0:
+                st.warning(f"Date A NDWI failed: 0 finite pixels for item {s2_a_item.id}.")
+            if finite_ndwi_b_before == 0:
+                st.warning(f"Date B NDWI failed: 0 finite pixels for item {s2_b_item.id}.")
             aligned_ndwi_b = align_date_b_to_date_a(ndwi_a, transform_a, crs_a, ndwi_b, transform_b, crs_b)
+            finite_ndwi_b_after = int(np.count_nonzero(np.isfinite(aligned_ndwi_b)))
             calculated_change = calculate_change(
                 ndwi_a,
                 transform_a,
@@ -275,10 +282,14 @@ try:
             bounds_b_in_a = get_raster_bounds(aligned_ndwi_b.shape, transform_a)
             overlap_bounds = get_overlap_bounds(bounds_a, bounds_b_in_a)
             coastline_debug = {
+                "date_a_item_id": s2_a_item.id,
+                "date_b_item_id": s2_b_item.id,
                 "date_a_product_datetime": str(s2_a_item.properties.get("datetime", "Unknown")),
                 "date_b_product_datetime": str(s2_b_item.properties.get("datetime", "Unknown")),
                 "date_a_crs": str(crs_a),
                 "date_b_crs": str(crs_b),
+                "date_a_transform": str(transform_a),
+                "date_b_transform": str(transform_b),
                 "calculated_change_crs": str(crs_a),
                 "date_a_bounds": bounds_a,
                 "date_b_bounds": bounds_b_in_a,
@@ -287,7 +298,11 @@ try:
                 "ndwi_b_stats": array_stats(aligned_ndwi_b),
                 "change_stats": array_stats(calculated_change),
                 "shape_a": ndwi_a.shape,
-                "shape_b": aligned_ndwi_b.shape,
+                "shape_b_before_alignment": ndwi_b.shape,
+                "shape_b_after_alignment": aligned_ndwi_b.shape,
+                "finite_ndwi_a": finite_ndwi_a,
+                "finite_ndwi_b_before_alignment": finite_ndwi_b_before,
+                "finite_ndwi_b_after_alignment": finite_ndwi_b_after,
             }
             drawn_polygon_coords = st.session_state.get("analysis_polygon_coords")
             analysis_area_received = drawn_polygon_coords is not None
@@ -481,17 +496,32 @@ if calculated_change is not None:
     )
 
     if coastline_debug:
+        st.caption(f"Date A item id: {coastline_debug.get('date_a_item_id')}")
+        st.caption(f"Date B item id: {coastline_debug.get('date_b_item_id')}")
         st.caption(f"Date A product datetime: {coastline_debug.get('date_a_product_datetime')}")
         st.caption(f"Date B product datetime: {coastline_debug.get('date_b_product_datetime')}")
         st.caption(f"Date A CRS: {coastline_debug.get('date_a_crs')}")
         st.caption(f"Date B CRS: {coastline_debug.get('date_b_crs')}")
+        st.caption(f"Date A transform: {coastline_debug.get('date_a_transform')}")
+        st.caption(f"Date B transform: {coastline_debug.get('date_b_transform')}")
         st.caption(f"calculated_change CRS: {coastline_debug.get('calculated_change_crs')}")
         st.caption(f"Date A bounds: {coastline_debug.get('date_a_bounds')}")
         st.caption(f"Date B bounds (aligned to A grid): {coastline_debug.get('date_b_bounds')}")
         st.caption(f"Overlap bounds after reprojection: {coastline_debug.get('overlap_bounds')}")
+        st.caption(f"NDWI A shape: {coastline_debug.get('shape_a')}")
+        st.caption(f"NDWI B shape before alignment: {coastline_debug.get('shape_b_before_alignment')}")
+        st.caption(f"NDWI B shape after alignment: {coastline_debug.get('shape_b_after_alignment')}")
+        st.caption(f"finite pixels in NDWI A: {coastline_debug.get('finite_ndwi_a')}")
+        st.caption(f"finite pixels in NDWI B before alignment: {coastline_debug.get('finite_ndwi_b_before_alignment')}")
+        st.caption(f"finite pixels in NDWI B after alignment: {coastline_debug.get('finite_ndwi_b_after_alignment')}")
         st.caption(f"ndwi_a min/max/finite: {coastline_debug['ndwi_a_stats']['min']} / {coastline_debug['ndwi_a_stats']['max']} / {coastline_debug['ndwi_a_stats']['finite']}")
-        st.caption(f"ndwi_b min/max/finite: {coastline_debug['ndwi_b_stats']['min']} / {coastline_debug['ndwi_b_stats']['max']} / {coastline_debug['ndwi_b_stats']['finite']}")
+        st.caption(f"ndwi_b aligned min/max/finite: {coastline_debug['ndwi_b_stats']['min']} / {coastline_debug['ndwi_b_stats']['max']} / {coastline_debug['ndwi_b_stats']['finite']}")
         st.caption(f"calculated_change min/max/finite before polygon mask: {coastline_debug['change_stats']['min']} / {coastline_debug['change_stats']['max']} / {coastline_debug['change_stats']['finite']}")
+        if coastline_debug["change_stats"]["finite"] == 0:
+            st.warning(
+                "calculated_change contains only NaN values because Date A and aligned Date B "
+                "have no overlapping finite NDWI pixels on the same grid."
+            )
 
 if map_state:
     latest_polygon = None
