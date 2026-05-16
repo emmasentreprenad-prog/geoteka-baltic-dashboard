@@ -357,19 +357,19 @@ try:
                     positive_values = masked_change[positive_indices[:, 0], positive_indices[:, 1]]
                     top_positive = np.argsort(positive_values)[-marker_limit_each:]
                     selected_positive = positive_indices[top_positive]
-                    positive_marker_points = [
-                        (float(transform_a * (int(col), int(row)))[1], float(transform_a * (int(col), int(row)))[0])
-                        for row, col in selected_positive
-                    ]
+                    positive_marker_points = []
+                    for row, col in selected_positive:
+                        x_coord, y_coord = transform_a * (int(col), int(row))
+                        positive_marker_points.append((float(y_coord), float(x_coord)))
 
                 if negative_indices.size > 0:
                     negative_values = np.abs(masked_change[negative_indices[:, 0], negative_indices[:, 1]])
                     top_negative = np.argsort(negative_values)[-marker_limit_each:]
                     selected_negative = negative_indices[top_negative]
-                    negative_marker_points = [
-                        (float(transform_a * (int(col), int(row)))[1], float(transform_a * (int(col), int(row)))[0])
-                        for row, col in selected_negative
-                    ]
+                    negative_marker_points = []
+                    for row, col in selected_negative:
+                        x_coord, y_coord = transform_a * (int(col), int(row))
+                        negative_marker_points.append((float(y_coord), float(x_coord)))
 
                 positive_marker_count = len(positive_marker_points)
                 negative_marker_count = len(negative_marker_points)
@@ -603,6 +603,8 @@ elif calculated_change is not None:
         f"positive area: {positive_area_m2:,.0f} m² ({positive_area_ha:,.2f} ha) | "
         f"negative area: {negative_area_m2:,.0f} m² ({negative_area_ha:,.2f} ha)"
     )
+
+    st.caption("Possible change detected, but this result should be checked carefully. It may be caused by real shoreline/water change, but it can also come from waves, cloudy haze, water turbidity, seasonal vegetation, or image noise. Field check is recommended before making decisions.")
 
     if polygon_mask is None:
         change_stats = None
