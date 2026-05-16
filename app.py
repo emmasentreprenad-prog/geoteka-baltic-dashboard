@@ -186,6 +186,8 @@ positive_area_m2 = 0.0
 positive_area_ha = 0.0
 negative_area_m2 = 0.0
 negative_area_ha = 0.0
+no_marker_reason = None
+analysis_area_received = False
 coastline_vector_feature_count = 0
 draw_controls_enabled = True
 
@@ -263,6 +265,7 @@ try:
                 crs_b,
             )
             drawn_polygon_coords = st.session_state.get("analysis_polygon_coords")
+            analysis_area_received = drawn_polygon_coords is not None
             if drawn_polygon_coords is not None:
                 polygon_mask, analysed_polygon_area_ha = build_polygon_mask_and_area(
                     drawn_polygon_coords,
@@ -426,15 +429,6 @@ st.caption(f"Map debug (below) — draw controls enabled: {draw_controls_enabled
 st.caption(f"Coastline raster overlay rendered: {raster_overlay_rendered}")
 
 if calculated_change is not None:
-    st.markdown(
-        f"**Coastline marker summary** — "
-        f"positive marker points: {positive_marker_count:,} | "
-        f"negative marker points: {negative_marker_count:,} | "
-        f"positive area: {positive_area_m2:,.0f} m² ({positive_area_ha:,.2f} ha) | "
-        f"negative area: {negative_area_m2:,.0f} m² ({negative_area_ha:,.2f} ha)"
-    )
-
-if calculated_change is not None:
     calculated_shape = calculated_change.shape
     finite_in_change = int(np.count_nonzero(np.isfinite(calculated_change)))
     finite_after_mask = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
@@ -523,10 +517,40 @@ elif calculated_change is not None:
     positive_threshold = st.slider("Positive change threshold", 0.0, 1.0, 0.15, 0.05)
     negative_threshold = st.slider("Negative change threshold", -1.0, 0.0, -0.15, 0.05)
 
+    st.info(f"Analysis area received: {'YES' if analysis_area_received else 'NO'}")
+
+    threshold_mask_positive = np.isfinite(masked_change) & (masked_change >= positive_threshold) if masked_change is not None else np.zeros_like(calculated_change, dtype=bool)
+    threshold_mask_negative = np.isfinite(masked_change) & (masked_change <= negative_threshold) if masked_change is not None else np.zeros_like(calculated_change, dtype=bool)
+
+    positive_marker_count = int(np.count_nonzero(threshold_mask_positive))
+    negative_marker_count = int(np.count_nonzero(threshold_mask_negative))
+    positive_area_m2 = float(positive_marker_count * 100)
+    negative_area_m2 = float(negative_marker_count * 100)
+    positive_area_ha = positive_area_m2 / 10000
+    negative_area_ha = negative_area_m2 / 10000
+
+    st.markdown(
+        f"**Coastline marker summary** — "
+        f"positive marker points: {positive_marker_count:,} | "
+        f"negative marker points: {negative_marker_count:,} | "
+        f"positive area: {positive_area_m2:,.0f} m² ({positive_area_ha:,.2f} ha) | "
+        f"negative area: {negative_area_m2:,.0f} m² ({negative_area_ha:,.2f} ha)"
+    )
+
     if polygon_mask is None:
-        st.warning("Draw an analysis area on the map first.")
+        change_stats = None
+        no_marker_reason = "no drawn area"
+    elif (positive_marker_count + negative_marker_count) == 0:
+        finite_masked_pixels = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
+        if s2_a_item is None or s2_b_item is None:
+            no_marker_reason = "Sentinel/date issue"
+        elif finite_masked_pixels == 0:
+            no_marker_reason = "mask did not intersect detected change"
+        else:
+            no_marker_reason = "no detected change above threshold"
         change_stats = None
     else:
+        no_marker_reason = None
         change_stats = calculate_change_stats(
             calculated_change,
             positive_threshold=positive_threshold,
@@ -534,10 +558,8 @@ elif calculated_change is not None:
             contact_zone_mask=polygon_mask,
         )
 
-        st.write(f"Positive change area: {change_stats['positive_area_m2']:,.0f} m²")
-        st.write(f"Positive change area: {change_stats['positive_area_ha']:,.2f} ha")
-        st.write(f"Negative change area: {change_stats['negative_area_m2']:,.0f} m²")
-        st.write(f"Negative change area: {change_stats['negative_area_ha']:,.2f} ha")
+    if no_marker_reason is not None:
+        st.warning(f"No marker points shown: {no_marker_reason}.")
 
     finite_displayed_count = int(np.count_nonzero(np.isfinite(masked_change))) if masked_change is not None else 0
     st.markdown("#### Debug")
